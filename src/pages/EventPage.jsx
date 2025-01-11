@@ -1,109 +1,178 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Box, Image, Text, Heading, VStack, Button, Input, Textarea, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure, useToast, AlertDialog, AlertDialogOverlay, AlertDialogContent, AlertDialogHeader, AlertDialogBody, AlertDialogFooter } from '@chakra-ui/react';
+import { Box, Select, Icon, Image, Text, Heading, VStack, Button, Input, Textarea, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, useDisclosure, useToast, AlertDialog, AlertDialogOverlay, AlertDialogContent, AlertDialogHeader, AlertDialogBody, AlertDialogFooter } from '@chakra-ui/react';
+import { FaArrowLeft, FaUpload } from "react-icons/fa";
 
 export const EventPage = () => {
   const { eventId } = useParams();
-  const navigate = useNavigate(); // Initialize useNavigate for redirection
-  const [event, setEvent] = useState(null); // Default to null for better conditional rendering
+  const navigate = useNavigate(); 
+  const [event, setEvent] = useState(null); 
   const [categories, setCategories] = useState([]);
   const [users, setUsers] = useState([]);
-  const [isEditing, setIsEditing] = useState(false); // Toggle between view and edit mode
-  const [editedEvent, setEditedEvent] = useState({}); // Holds edited event data
+  const [isEditing, setIsEditing] = useState(false); 
+  const [editedEvent, setEditedEvent] = useState({}); 
+  const [editedUser, setEditedUser] = useState({});
   const { isOpen, onOpen, onClose } = useDisclosure();
-  const [isDeleteOpen, setIsDeleteOpen] = useState(false); // State to manage delete confirmation modal
-  const [deleteConfirmation, setDeleteConfirmation] = useState(""); // Store user input for confirmation
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false); 
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const cancelRef = React.useRef();
-  const toast = useToast(); // Initialize Chakra UI Toast
+  const toast = useToast(); 
 
-  useEffect(() => {
+  useEffect(() => {  
     FetchEvents();
-    FetchCategories();
-    FetchUsers();
   }, []);
 
   useEffect(() => {
-    console.log(event);
-    console.log(categories);
-    console.log(users);
-  }, [event, categories, users]);
+  }, [event, categories, users, editedUser]);
 
   async function FetchEvents() {
-    const result = await fetch('http://localhost:3000/events');
-    const resultData = await result.json();
-    const foundEvent = resultData.find((event) => event.id === eventId);
-    setEvent(foundEvent);
-    setEditedEvent(foundEvent); // Initialize the editedEvent with the event data
+    try {
+      const currentUsers = await FetchUsers();
+      FetchCategories();
+      const result = await fetch('http://localhost:3000/events');
+      if (!result.ok) {
+        throw new Error(`Error: ${result.status} ${result.statusText}`);
+      }
+  
+      const resultData = await result.json();
+      const foundEvent = resultData.find((event) => event.id === eventId);
+      setEditedUser(currentUsers.find((user) => user.id == foundEvent.createdBy));
+      setEvent(foundEvent);
+      setEditedEvent(foundEvent); 
+    } catch (error) {
+      console.error("Failed to fetch:", error.message);
+    }
   }
 
   async function FetchCategories() {
-    const result = await fetch('http://localhost:3000/categories');
-    const resultData = await result.json();
-    setCategories(resultData);
+    try {
+      const result = await fetch('http://localhost:3000/categories');
+      if (!result.ok) {
+        throw new Error(`Error: ${result.status} ${result.statusText}`);
+      }
+      const resultData = await result.json();
+      setCategories(resultData);
+    } catch (error) {
+      console.error("Failed to fetch:", error.message);
+    }
   }
 
   async function FetchUsers() {
-    const result = await fetch('http://localhost:3000/users');
-    const resultData = await result.json();
-    setUsers(resultData);
+    try {
+      const result = await fetch('http://localhost:3000/users');
+      const resultData = await result.json();
+      setUsers(resultData);
+      return resultData;
+    } catch (error) {
+      console.error("Failed to fetch:", error.message);
+    }
   }
 
-  // Handle form field changes
   const handleChange = (e) => {
     const { name, value } = e.target;
     setEditedEvent((prev) => ({
       ...prev,
       [name]: value,
     }));
+    console.log(editedEvent);
   };
 
-  // Handle submitting the edited form
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleUserChange = (e) => {
+    const { name, value } = e.target;
+    setEditedUser((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+    console.log(editedUser);
+  };
 
-    try {
-      // Update the event on the server
-      const result = await fetch(`http://localhost:3000/events/${eventId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(editedEvent),
-      });
-
-      if (result.ok) {
-        const updatedEvent = await result.json();
-        setEvent(updatedEvent); // Update the local event with the updated data
-        setIsEditing(false); // Switch back to view mode
-        onClose(); // Close the modal
-
-        // Show success toast
-        toast({
-          title: 'Event updated successfully!',
-          description: 'The event details have been updated.',
-          status: 'success',
-          duration: 5000,
-          isClosable: true,
-        });
-      } else {
-        // Handle error if the response is not OK
-        throw new Error('Failed to update event');
+  const handleCategoryChange = (e) => {
+    const { options } = e.target;
+    const selectedCategories = [];
+    for (let i = 0; i < options.length; i++) {
+      if (options[i].selected) {
+        selectedCategories.push(options[i].value);
       }
-    } catch (error) {
-      // Show error toast
-      toast({
-        title: 'Error updating event',
-        description: error.message || 'There was an issue while updating the event.',
-        status: 'error',
-        duration: 5000,
-        isClosable: true,
-      });
+    }
+    setEditedEvent((prevEvent) => ({
+      ...prevEvent,
+      categoryIds: selectedCategories
+    }));
+  };
+
+  const handleImageChange = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const imageURL = URL.createObjectURL(file);
+      setEditedEvent((prevEvent) => ({
+        ...prevEvent,
+        ['image']: imageURL
+      }));
     }
   };
 
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if(editedEvent.title == '' || editedEvent.description == '' || editedEvent.startTime == '' || editedEvent.endTime == '' || editedEvent.createdBy == '' || editedEvent.location == ''){
+      alert('Zorg dat alle velden ingevuld zijn!');
+    }
+    else{
+      try {
+        await handleUser(editedUser);
+        const result = await fetch(`http://localhost:3000/events/${eventId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(editedEvent),
+        });
+
+        if (result.ok) {
+          const updatedEvent = await result.json();
+          setEvent(updatedEvent); 
+          setIsEditing(false); 
+          onClose(); 
+
+          toast({
+            title: 'Event updated successfully!',
+            description: 'The event details have been updated.',
+            status: 'success',
+            duration: 5000,
+            isClosable: true,
+          });
+          window.location.reload();
+        } else {
+          throw new Error('Failed to update event');
+        }
+      } catch (error) {
+        toast({
+          title: 'Error updating event',
+          description: error.message || 'There was an issue while updating the event.',
+          status: 'error',
+          duration: 5000,
+          isClosable: true,
+        });
+      }
+    }
+  };
+
+  async function handleUser(user){
+    const response = await fetch(`http://localhost:3000/users/${user.id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({name: user.name}),
+    });
+    if (response.ok) {
+      const responseData = await response.json();
+      console.log(responseData);
+    }
+  }
+
   // Handle event deletion
   const handleDelete = async () => {
-    // Ensure the user types "DELETE" exactly to confirm the deletion
     if (deleteConfirmation.toUpperCase() !== 'DELETE') {
       toast({
         title: 'Action not confirmed',
@@ -116,12 +185,11 @@ export const EventPage = () => {
     }
 
     try {
-      // Show loading toast while waiting for the delete request
       toast({
         title: 'Deleting event...',
         description: 'Please wait while we remove the event.',
         status: 'info',
-        duration: null, // Keep the loading message open
+        duration: null,
         isClosable: false,
       });
 
@@ -129,9 +197,7 @@ export const EventPage = () => {
         method: 'DELETE',
       });
 
-      console.log(result);
       if (result.ok) {
-        // Close the loading toast and show success message
         toast.closeAll();
         toast({
           title: 'Event deleted successfully!',
@@ -141,13 +207,11 @@ export const EventPage = () => {
           isClosable: true,
         });
 
-        // Redirect to the events page after deletion
-        // navigate('/'); // Use navigate to redirect to the events page
+        handleBack(); 
       } else {
         throw new Error('Failed to delete event');
       }
     } catch (error) {
-      // Handle network or unexpected errors
       toast.closeAll();
       toast({
         title: 'Error deleting event',
@@ -157,50 +221,56 @@ export const EventPage = () => {
         isClosable: true,
       });
     } finally {
-      // Close the delete confirmation modal in both success and failure cases
       setIsDeleteOpen(false);
     }
   };
 
+  function handleBack(){
+    window.location.href = '/';
+  }
+
 
   return (
     <Box p={6}>
+      <Button
+        leftIcon={<Icon as={FaArrowLeft} />}
+        colorScheme="teal"
+        variant="solid"
+        onClick={handleBack}
+        size="sm"
+        boxShadow="sm"
+        _hover={{ boxShadow: "md", transform: "scale(1.05)" }}
+        _active={{ boxShadow: "lg", transform: "scale(0.95)" }}
+        marginBottom="10px"
+      >
+        Back
+      </Button>
       <Heading as="h1" size="xl" mb={4}>
         Event Details
       </Heading>
-
       <Box bg="gray.100" p={4} borderRadius="md" boxShadow="sm">
         {event && categories && users ? (
           <VStack align="flex-start" spacing={4}>
-            {/* Event Title */}
             <Text fontSize="lg" fontWeight="bold">
               {event.title}
             </Text>
-
-            {/* Event Description */}
             <Text fontSize="md" color="gray.600">
               {event.description}
             </Text>
-
-            {/* Event Image */}
             <Image
               src={event.image}
               alt={event.title}
               borderRadius="md"
               boxShadow="sm"
-              width="100%"
+              width="33%"
             />
-
-            {/* Event Start and End Time */}
             <Text>
               <strong>Start Time:</strong> {event.startTime}
             </Text>
             <Text>
               <strong>End Time:</strong> {event.endTime}
             </Text>
-
-            {/* Categories */}
-            <Text>
+            <Box>
               <strong>Categories:</strong>{' '}
               {event.categoryIds.map((categoryId, index) => {
                 const category = categories.find((category) => category.id == categoryId);
@@ -215,13 +285,10 @@ export const EventPage = () => {
                   </Text>
                 );
               })}
-            </Text>
-
-            {/* Creator Information */}
-            <Text>
+            </Box>
+            <Box>
               <strong>Created By:</strong>{' '}
               {event.createdBy ? (
-                // Find the user with the matching ID
                 users.length > 0 ? (
                   users.map((user) => {
                     if (user.id == event.createdBy) {
@@ -239,14 +306,12 @@ export const EventPage = () => {
               ) : (
                 <Text color="red.500">Creator not specified</Text>
               )}
-            </Text>
+            </Box>
 
-            {/* Edit Button */}
             <Button colorScheme="blue" onClick={() => { setIsEditing(true); onOpen(); }}>
               Edit
             </Button>
 
-            {/* Delete Button */}
             <Button colorScheme="red" onClick={() => setIsDeleteOpen(true)}>
               Delete
             </Button>
@@ -255,8 +320,6 @@ export const EventPage = () => {
           <Text color="red.500">Event, categories, or users data is missing.</Text>
         )}
       </Box>
-
-      {/* Modal for editing event */}
       <Modal isOpen={isOpen} onClose={onClose}>
         <ModalOverlay />
         <ModalContent>
@@ -279,7 +342,7 @@ export const EventPage = () => {
                 mb={3}
               />
               <Input
-                type="text"
+                type="datetime-local"
                 name="startTime"
                 value={editedEvent.startTime}
                 onChange={handleChange}
@@ -287,14 +350,58 @@ export const EventPage = () => {
                 mb={3}
               />
               <Input
-                type="text"
+                 type="datetime-local"
                 name="endTime"
                 value={editedEvent.endTime}
                 onChange={handleChange}
                 placeholder="End Time"
                 mb={3}
               />
-              {/* You can add more fields for categories or images here if needed */}
+              <Select
+                multiple
+                value={editedEvent.categoryIds}
+                onChange={handleCategoryChange}
+                height="45px"
+                mb={3}
+              >
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </Select>
+              <Input
+                name="name"
+                value={editedUser.name}
+                onChange={handleUserChange}
+                placeholder="Created by"
+                mb={3}
+              />
+              <Input
+                name="location"
+                value={editedEvent.location}
+                onChange={handleChange}
+                placeholder="Location"
+                mb={3}
+              />
+              <Button
+                as="label"
+                htmlFor="image-upload"
+                leftIcon={<Icon as={FaUpload} />}
+                colorScheme="teal"
+                variant="solid"
+                cursor="pointer"
+                mb={3}
+              >
+                Upload Image
+              </Button>
+              <Input
+                id="image-upload"
+                type="file"
+                accept="image/*"
+                onChange={handleImageChange}
+                hidden
+              />
               <ModalFooter>
                 <Button type="submit" colorScheme="blue">
                   Save Changes
@@ -308,7 +415,6 @@ export const EventPage = () => {
         </ModalContent>
       </Modal>
 
-      {/* Delete Confirmation Modal */}
       <AlertDialog isOpen={isDeleteOpen} leastDestructiveRef={cancelRef} onClose={() => setIsDeleteOpen(false)}>
         <AlertDialogOverlay>
           <AlertDialogContent>
